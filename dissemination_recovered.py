@@ -1,5 +1,5 @@
 #imports
-import pickle, json, multiprocessing, time, random, enchant, nltk
+import pickle, json, multiprocessing, time, random, enchant, nltk, math
 import pandas as pd
 import statsmodels.formula.api as smf
 import numpy as np
@@ -8,7 +8,6 @@ from tokenizer import tokenizer
 from nltk.util import ngrams
 from gensim.models import Word2Vec
 from gensim.test.utils import common_texts
-from nltk.corpus import words, names
 from pathlib import Path
 from functools import reduce
 
@@ -24,13 +23,7 @@ def GetData(in_path, start, end, offset):
         for filename in Path(in_path).glob('**/*.csv'):
             cur_df = pd.read_csv(filename)
             df = df.append(cur_df)
-
-    #for each time step, navigate through all data folders, and concatenate
-    #for each subreddit, collect all relevant files within the given time range 
-    #(inclusive at the lower end, exclusive at the higher end) 
-        #if there's more than one within the time range, concatenate them
-    
-    #run analyses for that time step
+            
     return df
 
 
@@ -317,7 +310,7 @@ def getD_SCBOW(texts):
     #hyperparameters from Abdul's work, fiddle with them a bit
     #uncomment to retrain model
     try: 
-        model = Word2Vec(texts, size=100, window=5, min_count=50, workers=12)
+        model = Word2Vec(texts, size=100, window=5, min_count=100, workers=12)
         model.save("word2vec.model")
         # model = Word2Vec.load("word2vec.model")
 
@@ -357,14 +350,16 @@ def SemDensity(word, index, similarities, threshold=None):
     
     #if no threshold, calculate mean distance to all other words in vocabulary
     else: 
-        return distances[index].mean()
-    
+        return similarities[index].mean()
+
 def D_SemSeries(df, offset, words, nhood_size): 
     start = df['created_utc'].min()
     end = df['created_utc'].max()
     cur_start = start
 
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -388,14 +383,13 @@ def D_SemSeries(df, offset, words, nhood_size):
                     D_S = np.nan
     
     
-                my_tuples.append((word, cur_start, D_S))
+                my_dict[word].append((cur_start, D_S))
         else: 
             for word in words: 
-                my_tuples.append((word, cur_start, np.nan))
+                my_dict[word].append((cur_start, np.nan))
         cur_start = cur_end 
         
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'd_t'])  
-    return my_df
+    return my_dict
 
 
 
@@ -425,12 +419,15 @@ def FasterD_USeries(df, offset, words, threshold):
     print("my_dict single process: ", my_dict)
     return my_dict
 
+
 def D_USeries(df, offset, words, threshold): 
     start = df['created_utc'].min()
     end = df['created_utc'].max()
     cur_start = start
     
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -455,11 +452,10 @@ def D_USeries(df, offset, words, threshold):
         #get D_U
         for word in words: 
             D_U = newD_U(word, user_sets, cur_vocab, posts)
-            my_tuples.append((word, cur_start, D_U))
+            my_dict[word].append((cur_start, D_U))
         cur_start = cur_end 
         
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'd_t'])  
-    return my_df
+    return my_dict
 
 
 def NewD_USeriesMultiprocess(df, offset, words, threshold): 
@@ -568,12 +564,15 @@ def MultiprocessD_TSeries(df, offset, words, threshold):
         cur_start = cur_end
     return my_dict
 
+
 def D_TSeries(df, offset, words, threshold): 
     start = df['created_utc'].min()
     end = df['created_utc'].max()
     cur_start = start
     
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -597,10 +596,10 @@ def D_TSeries(df, offset, words, threshold):
         #get D_T
         for word in words: 
             D_T = newD_T(word, thread_sets, cur_vocab, posts)
-            my_tuples.append((word, cur_start, D_T))
+            my_dict[word].append((cur_start, D_T))
         cur_start = cur_end 
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'd_t'])  
-    return my_df
+ 
+    return my_dict
 
 
 #get D_L
@@ -609,7 +608,9 @@ def D_LSeries(df, offset, words, threshold):
     end = df['created_utc'].max()
     cur_start = start
 
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -631,17 +632,15 @@ def D_LSeries(df, offset, words, threshold):
                     #a bit of a cheap hack, works under assumption that words in df are unique
                     #if time permits: index by word
                     d_L = dl_df[dl_df['word'] == word].iloc[0]['D_L']
-                    my_tuples.append((word, cur_start, d_L))
+                    my_dict[word].append((cur_start, d_L))
 
                 
                 else: 
-                    my_tuples.append((word, cur_start, np.nan))
+                    my_dict[word].append((cur_start, np.nan))
         
         cur_start = cur_end
                
-    #return df of values, time steps, and word
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'd_l'])  
-    return my_df
+    return my_dict
 
 
 def Freq(df, offset, words, threshold): 
@@ -649,7 +648,9 @@ def Freq(df, offset, words, threshold):
     end = df['created_utc'].max()
     cur_start = start
     
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -663,14 +664,12 @@ def Freq(df, offset, words, threshold):
             
             #np.nan behavior desirable for computing correlations later
             if freq <= 0: 
-                my_tuples.append((word, cur_start, np.nan))
+                my_dict[word].append((cur_start, np.nan))
             else: 
-                my_tuples.append((word, cur_start, freq))
+                my_dict[word].append((cur_start, freq))
         cur_start = cur_end
     
-    #return df of values, time steps, and word
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'freq'])  
-    return my_df
+    return my_dict
 
 
 def RelFreq(df, offset, words, threshold): 
@@ -678,8 +677,10 @@ def RelFreq(df, offset, words, threshold):
     end = df['created_utc'].max()
     cur_start = start
     
-    my_tuples = []
-
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
+    
     while cur_start < end: 
         cur_end = cur_start + offset
 
@@ -694,21 +695,22 @@ def RelFreq(df, offset, words, threshold):
             
             #np.nan behavior desirable for computing correlations later
             if freq <= 0: 
-                my_tuples.append((word, cur_start, np.nan))
+                my_dict[word].append((cur_start, np.nan))
             else: 
-                my_tuples.append((word, cur_start, freq/n_words))
+                my_dict[word].append((cur_start, freq/n_words))
         cur_start = cur_end
     
-    #return df of values, time steps, and word
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'rel_freq'])  
-    return my_df
+    return my_dict
+
 
 def Rank(df, offset, words, threshold): 
     start = df['created_utc'].min()
     end = df['created_utc'].max()
     cur_start = start
     
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -725,14 +727,12 @@ def Rank(df, offset, words, threshold):
             
             #np.nan behavior desirable for computing correlations later
             if freq <= 0: 
-                my_tuples.append((word, cur_start, np.nan))
+                my_dict[word].append((cur_start, np.nan))
             else: 
-                my_tuples.append((word, cur_start, rank_dict[word]))
+                my_dict[word].append((cur_start, rank_dict[word]))
         cur_start = cur_end
     
-    #return df of values, time steps, and word
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'rank'])  
-    return my_df
+    return my_dict
 
 
 def NormedRank(df, offset, words, threshold): 
@@ -740,7 +740,9 @@ def NormedRank(df, offset, words, threshold):
     end = df['created_utc'].max()
     cur_start = start
     
-    my_tuples = []
+    my_dict = dict()
+    for word in words: 
+        my_dict[word] = []
     
     while cur_start < end: 
         cur_end = cur_start + offset
@@ -758,103 +760,86 @@ def NormedRank(df, offset, words, threshold):
             
             #np.nan behavior desirable for computing correlations later
             if freq <= 0: 
-                my_tuples.append((word, cur_start, np.nan))
+                my_dict[word].append((cur_start, np.nan))
             else: 
-                my_tuples.append((word, cur_start, rank_dict[word]/vocab_size))
+                my_dict[word].append((cur_start, rank_dict[word]/vocab_size))
         cur_start = cur_end
     
-    #return df of values, time steps, and word
-    my_df = pd.DataFrame(my_tuples, columns = ['word', 'time', 'normed_rank'])  
-    return my_df
+    return my_dict
 
 #main
-
 if __name__ == "__main__": 
-#    nuts_paths = ['wnut17train.conll', 'emerging.dev.conll', 'emerging.test.annotated']
-#    nuts = NUTSAccess(nuts_paths)
-#    conll = CoNLLAccess('eng.list')
-#    nltk.download('words')
-#    
-#    #read in data
-#    reddit_df = GetData('data/', 0, 1559214151, 1559214151)
-#    print("DataFrame shape:", reddit_df.shape)
-#    
-#    #access warriner, retrieve top 250 by emotional valence
-#    warriner = pd.read_csv('warriner_affect_ratings.csv')
-#    top_250 = warriner.nlargest(250, 'V.Mean.Sum')
-#    bottom_250 = warriner.nsmallest(250, 'V.Mean.Sum')
-#    warriner_words = top_250['Word'].tolist() + bottom_250['Word'].tolist()
-#    
-#    warriner_df = pd.DataFrame(columns=['word', 'category'])
-#    warriner_df['word'] = warriner_words
-#    warriner_df['category'] = 'warriner'
-#
-#    #randomly selected standard English words
-#    standard_random = random.sample(set(words.words()), 500)
-#    standard_df = pd.DataFrame(columns=['word', 'category'])
-#    standard_df['word'] = standard_random
-#    standard_df['category'] = 'standard'
-#    
-#    #urban dictionary words
-#    urban_dict = UrbanAccess('urban_cleaned.csv', pickled=True)
-#    urban_df = pd.DataFrame(columns=['word', 'category'])
-#    urban_df['word'] = urban_dict
-#    urban_df['category'] = 'nonstandard'
-#    
-#    #concatenate all dfs into one
-#    data_df = pd.concat([warriner_df, standard_df, urban_df])
-#    data_df = data_df.drop_duplicates(subset='word')
-#    
-#    cleaned = CleanData(reddit_df, pickled=True)
-#    print("Cleaned DataFrame shape:", cleaned.shape)    
-#
-#    #frequency
-#    freq = Freq(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("Frequency completed:", freq.shape)
-#    print(freq.head(20))
-#    
-#    #rel_freq
-#    rel_freq = RelFreq(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("Relative frequency completed:", rel_freq.shape)
-#     
-#    #rank
-#    rank = Rank(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("Rank completed:", rank.shape)
-#    
-#    normed_rank = NormedRank(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("Normed rank completed:", normed_rank.shape)
-#    
-##    d_sem = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.5)
-#    
-#    d_l = D_LSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("D^L completed")
-#        
-#    d_t = D_TSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("D^T completed")
-#    
-#    d_u = D_USeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    print("D^U completed")
-#
-#    measurements = [freq, rel_freq, rank, normed_rank, d_l, d_t, d_u]
-##    measurements = [freq, rel_freq, rank, normed_rank]
-#    
-#    joined = pd.concat(measurements, axis=1)
-#    
-#    #drop duplicates, from https://stackoverflow.com/questions/14984119/python-pandas-remove-duplicate-columns
-#    joined = joined.loc[:,~joined.columns.duplicated()]
-#    
-#    print("Join completed:", joined.shape)
-#    print(joined['word'].value_counts())
-# 
-#    
-#    joined.to_csv('joined.csv')
-##    data_df.to_pickle('data_df.pkl')
-
-
-
-
-
+    #read in data
+    reddit_df = GetData('data/', 0, 1559214151, 1559214151)
+    print("DataFrame shape:", reddit_df.shape)
     
+    data_df = pd.read_csv('words.csv')    
+    cleaned = CleanData(reddit_df, pickled=True)
+    print("Cleaned DataFrame shape:", cleaned.shape)    
 
+    #frequency
+    freq = Freq(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['freq'] = data_df['word'].map(lambda x: freq[x])
+    print("Frequency completed")
+    
+    #filter out words that never hit the frequency threshold
+    data_df['no_values'] = data_df['freq'].map(lambda x: all(np.isnan(y[1]) for y in x))
+    print(data_df['no_values'].value_counts())
+    
+    data_df = data_df[data_df['no_values'] == False]
+    print(data_df['source'].value_counts())
+    
+    #relative frequency
+    rel_freq = RelFreq(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['rel_freq'] = data_df['word'].map(lambda x: rel_freq[x])
+    print("Relative frequency completed")
+    
+    #rank
+    rank = Rank(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['rank'] = data_df['word'].map(lambda x: rank[x])
+    print("Rank completed")
+    
+    #normed rank
+    normed_rank = NormedRank(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['normed_rank'] = data_df['word'].map(lambda x: normed_rank[x])
+    print("Normed rank completed")
+    
+    #d_l
+    d_l = D_LSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['d_l'] = data_df['word'].map(lambda x: d_l[x])
+    print("D^L completed")
+    
+    #d_u
+    d_u = D_USeries(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['d_u'] = data_df['word'].map(lambda x: d_u[x])
+    print("D^U completed")
+    
+    #d_t
+    d_t = D_TSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
+    data_df['d_t'] = data_df['word'].map(lambda x: d_t[x])
+    print("D^T completed")
+    
+    #d_s_25
+    d_s_25 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.25)
+    data_df['d_s_25'] = data_df['word'].map(lambda x: d_s_25[x])
+    print("D^S 0.25 completed")
+    
+    #d_s_50
+    d_s_50 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.50)
+    data_df['d_s_50'] = data_df['word'].map(lambda x: d_s_50[x])
+    print("D^S 0.50 completed")
+    
+    #d_s_75
+    d_s_75 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.75)
+    data_df['d_s_75'] = data_df['word'].map(lambda x: d_s_75[x])
+    print("D^S 0.75 completed")
+    
+    #d_s_mean
+    d_s_mean = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), None)
+    data_df['d_s_mean'] = data_df['word'].map(lambda x: d_s_mean[x])
+    print("D^S mean completed")
+    
+    #d_s_lsa
     
     
+    data_df.to_csv('data_df.csv')
