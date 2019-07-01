@@ -4,19 +4,18 @@ from nltk.corpus import names
 import wikipedia
 
 #helper function for urbandictionary lambda function
-def CheckWikipedia(title): 
-    try: 
-        wikipedia.page(title)
-        return True
-    except wikipedia.exceptions.PageError: 
-        return False
-    except wikipedia.exceptions.DisambiguationError: 
-        return True
-
+def WikipediaTitles(file_path): 
+    with open(file_path, 'r') as file: 
+        titles = file.read().split('\n')
+    return set(titles)
+    
 #to access urban dictionary data, returns a list of nonstandard words
 def UrbanAccess(file_path, single_word=True, pickled=False): 
     if pickled: 
-        nonstandard = pd.read_pickle('urban.pkl')
+        if single_word: 
+            return pd.read_pickle('single_word.pkl')['word'].tolist()
+        else: 
+            return pd.read_pickle('multi_word.pkl')['word'].tolist()
     else: 
         urban = pd.read_csv(file_path)
         
@@ -38,23 +37,26 @@ def UrbanAccess(file_path, single_word=True, pickled=False):
         nonstandard = urban[(urban['enchant'] == False) & (urban['name'] == False)]
         print(nonstandard['name'].value_counts())
         nonstandard['multiword'] = nonstandard['word'].map(lambda x: ' ' in str(x))
-    
+        print(nonstandard['multiword'].value_counts())
+        print(nonstandard['multiword'])
+
     if single_word: 
+        wiki_titles = WikipediaTitles('enwiki-latest-all-titles-in-ns0')
         single_word = nonstandard[nonstandard['multiword'] == False]
-        print("Single word before:", single_word.shape)
 
         #make wikipedia call, positined here to limit number of calls
-        single_word['wikipedia'] = single_word['word'].map(lambda x: CheckWikipedia(x))
+        single_word['wikipedia'] = single_word['word'].map(lambda x: x in wiki_titles)
         single_word = single_word[single_word['wikipedia'] == True]
-        print("Single word after:", single_word.shape)
-        nonstandard.to_pickle('urban.pkl')
+        single_word.to_pickle('single_word.pkl')
         return single_word['word'].tolist()
-        
+    
     else: 
+        wiki_titles = WikipediaTitles('enwiki-latest-all-titles-in-ns0')
         multi_word = nonstandard[nonstandard['multiword'] == True]
+        
         #make wikipedia call, positined here to limit number of calls
-        single_word['wikipedia'] = single_word['word'].map(lambda x: CheckWikipedia(x))
-        nonstandard.to_pickle('urban.pkl')
+        multi_word['wikipedia'] = multi_word['word'].map(lambda x: x in wiki_titles)
+        single_word.to_pickle('multi_word.pkl')
         return multi_word['word'].tolist()
     
 
@@ -80,6 +82,9 @@ def NUTSAccess(nuts_files):
                         entities.add(entity_tuple)
 
     df = pd.DataFrame(list(entities), columns=['word', 'nuts_ent_label'])
+    df['multi_word'] = df['word'].map(lambda x: '_' in x)
+    df = df[df['multi_word'] == False]
+    df = df.drop(labels=['multi_word'], axis=1)
     return df
 
 
@@ -89,6 +94,9 @@ def CoNLLAccess(conll_file):
         
     splits = [split for split in splits if len(split) >= 2]
     ents = [(x[0], '_'.join(x[1:])) for x in splits]
+    
+    #remove multiword phrases: 
+    ents = [x for x in ents if not '_' in x]
     
     df = pd.DataFrame(ents, columns=['conll_ent_label', 'word'])
     return df
@@ -127,11 +135,15 @@ if __name__ == '__main__':
     
     #bnc words
     bnc = BNCAccess('written.num.o5')
+    bnc['source'] = 'bnc'
     
     words = pd.concat([nuts, conll, urban, bnc])
+    print(words.head())
+    words['word'] = words['word'].map(lambda x: str(x).lower())
+    words.to_csv('words.csv')
     print(words.head())
     
     for df in [nuts, conll, urban, bnc]: 
         print(df.shape)
-    
+        
     
