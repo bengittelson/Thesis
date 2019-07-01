@@ -96,7 +96,11 @@ def CoNLLAccess(conll_file):
     ents = [(x[0], '_'.join(x[1:])) for x in splits]
     
     #remove multiword phrases: 
-    ents = [x for x in ents if not '_' in x]
+    ents = [x for x in ents if not '_' in x[1]]
+    
+    #remove duplicates: 
+    ents = set(ents)
+    ents = list(ents)
     
     df = pd.DataFrame(ents, columns=['conll_ent_label', 'word'])
     return df
@@ -117,6 +121,10 @@ def BNCAccess(bnc_file):
     bnc_df['enchant'] = bnc_df['word'].map(lambda x: us.check(str(x)) or uk.check(str(x)) or gb.check(str(x)) or ca.check(str(x)) or au.check(str(x)) or ind.check(str(x)))
     df = bnc_df[bnc_df['enchant'] == True]
     df = df.drop(labels='enchant', axis=1)
+    
+    #randomly sample to get this to a more manageable
+    print(df.shape)
+    df = df.sample(n=5000)
     return df
 
     
@@ -128,7 +136,7 @@ if __name__ == '__main__':
     conll['source'] = 'conll'
     
     #urban dictionary words
-    urban_dict = UrbanAccess('urban_cleaned.csv')
+    urban_dict = UrbanAccess('urban_cleaned.csv', pickled=True)
     urban = pd.DataFrame(columns=['word', 'source'])
     urban['word'] = urban_dict
     urban['source'] = 'urban'
@@ -137,13 +145,21 @@ if __name__ == '__main__':
     bnc = BNCAccess('written.num.o5')
     bnc['source'] = 'bnc'
     
-    words = pd.concat([nuts, conll, urban, bnc])
+    words = pd.concat([bnc, nuts, conll, urban])
     print(words.head())
     words['word'] = words['word'].map(lambda x: str(x).lower())
+    
+    #drop duplicates: note that we use first here to reflect priority order 
+    # of datasets (i.e. if you're a named entity you get counted as such, 
+    # if you're in one of the previous datasets, you shouldn't get counted in the urban dataset, etc.)
+    
+    print(words.shape)
+    words = words.drop_duplicates(subset = 'word', keep='first')
+    print(words.shape)
     words.to_csv('words.csv')
     print(words.head())
     
-    for df in [nuts, conll, urban, bnc]: 
+    for df in [bnc, nuts, conll, urban]: 
         print(df.shape)
         
     
