@@ -20,9 +20,10 @@ def GetData(in_path, start, end, offset):
         cur_end = cur_start + offset
         print(cur_start, cur_end)
         cur_start = cur_end
-        for filename in Path(in_path).glob('**/*.csv'):
+        for filename in Path(in_path).glob('**/[a-zA-Z]+_'+ str(cur_start) + '_' + str(end) + '.csv'):
             cur_df = pd.read_csv(filename)
             df = df.append(cur_df)
+            print(filename)
             
     return df
 
@@ -310,8 +311,8 @@ def getD_SCBOW(texts):
     #hyperparameters from Abdul's work, fiddle with them a bit
     #uncomment to retrain model
     try: 
-        model = Word2Vec(texts, size=100, window=5, min_count=100, workers=12)
-        model.save("word2vec.model")
+        model = Word2Vec(texts, size=100, window=5, min_count=100, workers=multiprocessing.cpu_count())
+#        model.save("word2vec.model")
         # model = Word2Vec.load("word2vec.model")
 
         vocab = list(model.wv.vocab)
@@ -769,77 +770,95 @@ def NormedRank(df, offset, words, threshold):
 
 #main
 if __name__ == "__main__": 
+    offset = 2629743
+    start = 1451606400
+    end = 1459495629
+    
     #read in data
-    reddit_df = GetData('data/', 0, 1559214151, 1559214151)
-    print("DataFrame shape:", reddit_df.shape)
     
-    data_df = pd.read_csv('words.csv')    
-    cleaned = CleanData(reddit_df, pickled=True)
-    print("Cleaned DataFrame shape:", cleaned.shape)    
+    cur_start = start
+    
+    while cur_start < end: 
+        cur_end = cur_start + offset
+        print(cur_start, cur_end)
+        reddit_df = GetData('data/', cur_start, cur_end, offset)
+        cur_start = cur_end
 
-    #frequency
-    freq = Freq(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['freq'] = data_df['word'].map(lambda x: freq[x])
-    print("Frequency completed")
-    
-    #filter out words that never hit the frequency threshold
-    data_df['no_values'] = data_df['freq'].map(lambda x: all(np.isnan(y[1]) for y in x))
-    print(data_df['no_values'].value_counts())
-    
-    data_df = data_df[data_df['no_values'] == False]
-    print(data_df['source'].value_counts())
-    
-    #relative frequency
-    rel_freq = RelFreq(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['rel_freq'] = data_df['word'].map(lambda x: rel_freq[x])
-    print("Relative frequency completed")
-    
-    #rank
-    rank = Rank(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['rank'] = data_df['word'].map(lambda x: rank[x])
-    print("Rank completed")
-    
-    #normed rank
-    normed_rank = NormedRank(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['normed_rank'] = data_df['word'].map(lambda x: normed_rank[x])
-    print("Normed rank completed")
-    
-    #d_l
-    d_l = D_LSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['d_l'] = data_df['word'].map(lambda x: d_l[x])
-    print("D^L completed")
-    
-    #d_u
-    d_u = D_USeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['d_u'] = data_df['word'].map(lambda x: d_u[x])
-    print("D^U completed")
-    
-    #d_t
-    d_t = D_TSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-    data_df['d_t'] = data_df['word'].map(lambda x: d_t[x])
-    print("D^T completed")
-    
-    #d_s_25
-    d_s_25 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.25)
-    data_df['d_s_25'] = data_df['word'].map(lambda x: d_s_25[x])
-    print("D^S 0.25 completed")
-    
-    #d_s_50
-    d_s_50 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.50)
-    data_df['d_s_50'] = data_df['word'].map(lambda x: d_s_50[x])
-    print("D^S 0.50 completed")
-    
-    #d_s_75
-    d_s_75 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.75)
-    data_df['d_s_75'] = data_df['word'].map(lambda x: d_s_75[x])
-    print("D^S 0.75 completed")
-    
-    #d_s_mean
-    d_s_mean = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), None)
-    data_df['d_s_mean'] = data_df['word'].map(lambda x: d_s_mean[x])
-    print("D^S mean completed")
-    
-    #d_s_lsa
     
     
-    data_df.to_csv('data_df.csv')
+    
+#    reddit_df = GetData('data/', 0, 1559214151, 1559214151)
+#    
+#    
+#    print("DataFrame shape:", reddit_df.shape)
+#    
+#    data_df = pd.read_csv('words.csv')    
+#    cleaned = CleanData(reddit_df, pickled=True)
+#    print("Cleaned DataFrame shape:", cleaned.shape)    
+#
+#    #frequency
+#    freq = Freq(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['freq'] = data_df['word'].map(lambda x: freq[x])
+#    print("Frequency completed")
+#    
+#    #filter out words that never hit the frequency threshold
+#    data_df['no_values'] = data_df['freq'].map(lambda x: all(np.isnan(y[1]) for y in x))
+#    print(data_df['no_values'].value_counts())
+#    
+#    data_df = data_df[data_df['no_values'] == False]
+#    print(data_df['source'].value_counts())
+#    
+#    #relative frequency
+#    rel_freq = RelFreq(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['rel_freq'] = data_df['word'].map(lambda x: rel_freq[x])
+#    print("Relative frequency completed")
+#    
+#    #rank
+#    rank = Rank(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['rank'] = data_df['word'].map(lambda x: rank[x])
+#    print("Rank completed")
+#    
+#    #normed rank
+#    normed_rank = NormedRank(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['normed_rank'] = data_df['word'].map(lambda x: normed_rank[x])
+#    print("Normed rank completed")
+#    
+#    #d_l
+#    d_l = D_LSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['d_l'] = data_df['word'].map(lambda x: d_l[x])
+#    print("D^L completed")
+#    
+#    #d_u
+#    d_u = D_USeries(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['d_u'] = data_df['word'].map(lambda x: d_u[x])
+#    print("D^U completed")
+#    
+#    #d_t
+#    d_t = D_TSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
+#    data_df['d_t'] = data_df['word'].map(lambda x: d_t[x])
+#    print("D^T completed")
+#    
+#    #d_s_25
+#    d_s_25 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.25)
+#    data_df['d_s_25'] = data_df['word'].map(lambda x: d_s_25[x])
+#    print("D^S 0.25 completed")
+#    
+#    #d_s_50
+#    d_s_50 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.50)
+#    data_df['d_s_50'] = data_df['word'].map(lambda x: d_s_50[x])
+#    print("D^S 0.50 completed")
+#    
+#    #d_s_75
+#    d_s_75 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.75)
+#    data_df['d_s_75'] = data_df['word'].map(lambda x: d_s_75[x])
+#    print("D^S 0.75 completed")
+#    
+#    #d_s_mean
+#    d_s_mean = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), None)
+#    data_df['d_s_mean'] = data_df['word'].map(lambda x: d_s_mean[x])
+#    print("D^S mean completed")
+#    
+#    #d_s_lsa
+#    
+#    
+#    data_df.to_csv('data_df.csv')
