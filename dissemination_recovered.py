@@ -1,5 +1,5 @@
 #imports
-import pickle, json, multiprocessing, time, random, enchant, nltk, math
+import pickle, json, multiprocessing, time, random, enchant, nltk, math, os
 import pandas as pd
 import statsmodels.formula.api as smf
 import numpy as np
@@ -12,6 +12,24 @@ from pathlib import Path
 from functools import reduce
 
 #functions: utilities
+#
+#def GetData(in_path, start, end, offset): 
+#    df = pd.DataFrame()
+#    cur_start = start
+#    
+#    while cur_start < end: 
+#        cur_end = cur_start + offset
+#        print(cur_start, cur_end)
+#        cur_start = cur_end
+#        for filename in Path(in_path).glob('**/*.csv'):
+#            print(filename)
+#            #file_split = 
+#            cur_df = pd.read_csv(filename, warn_bad_lines=True)
+#            df = df.append(cur_df)
+#            
+#    return df
+
+
 def GetData(in_path, start, end, offset): 
     df = pd.DataFrame()
     cur_start = start
@@ -19,12 +37,19 @@ def GetData(in_path, start, end, offset):
     while cur_start < end: 
         cur_end = cur_start + offset
         print(cur_start, cur_end)
+        for directory in Path(in_path).glob('*'):
+            if not '.DS_Store' in str(directory): 
+                subreddit = str(directory).strip(in_path)
+                #special case for some reason, fix later
+                if subreddit == 'pple_': 
+                    subreddit = 'apple_'
+                    
+                cur_file = str(directory) + '/' + subreddit + str(cur_start) + '_' + str(cur_end) + '.csv'
+                cur_df = pd.read_csv(cur_file, error_bad_lines=False, warn_bad_lines=True, engine='python')
+                df = df.append(cur_df)
+                
         cur_start = cur_end
-        for filename in Path(in_path).glob('**/[a-zA-Z]+_'+ str(cur_start) + '_' + str(end) + '.csv'):
-            cur_df = pd.read_csv(filename)
-            df = df.append(cur_df)
-            print(filename)
-            
+        
     return df
 
 
@@ -77,6 +102,8 @@ def CleanData(in_df, pickled=False):
 
 
 def TimeSubset(start, end, df): 
+    
+    
     subset = df[(df['created_utc'] >= start) & (df['created_utc'] <= end)].copy()
     return subset
 
@@ -311,8 +338,8 @@ def getD_SCBOW(texts):
     #hyperparameters from Abdul's work, fiddle with them a bit
     #uncomment to retrain model
     try: 
-        model = Word2Vec(texts, size=100, window=5, min_count=100, workers=multiprocessing.cpu_count())
-#        model.save("word2vec.model")
+        model = Word2Vec(texts, size=100, window=5, min_count=100, workers=12)
+        model.save("word2vec.model")
         # model = Word2Vec.load("word2vec.model")
 
         vocab = list(model.wv.vocab)
@@ -703,7 +730,7 @@ def RelFreq(df, offset, words, threshold):
     
     return my_dict
 
-
+ 
 def Rank(df, offset, words, threshold): 
     start = df['created_utc'].min()
     end = df['created_utc'].max()
@@ -768,32 +795,200 @@ def NormedRank(df, offset, words, threshold):
     
     return my_dict
 
-#main
+@profile
+def CalcMeasures(reddit_df, data_df, words, threshold, measurements): 
+    #check that there are posts in the current subset
+    if len(reddit_df.index) <= 0: 
+        return data_df
+    
+    cur_vocab = makeVocab(reddit_df, threshold)
+    n_words = sum(cur_vocab.values())
+    ranks = dict((item[1][0], item[0]) for item in enumerate(cur_vocab.most_common()))
+    dl_df = getD_L(cur_df, 3)
+    
+    #initialize dictionaries
+    freq_dict = dict()
+    rel_freq_dict = dict()
+    rank_dict = dict()
+    normed_rank_dict = dict()
+    d_u_dict = dict()
+    d_t_dict = dict()
+    d_l_dict = dict()
+    d_s_25_dict = dict()
+    d_s_50_dict = dict()
+    d_s_75_dict = dict()
+    d_s_mean_dict = dict()
+    
+    for word in words: 
+        freq_dict[word] = []
+        rel_freq_dict[word] = []
+        rank_dict[word] = []
+        normed_rank_dict[word] = []
+        d_u_dict[word] = []
+        d_t_dict[word] = [] 
+        d_l_dict[word] = []
+        d_s_25_dict[word] = []
+        d_s_50_dict[word] = []
+        d_s_75_dict[word] = []
+        d_s_mean_dict[word] = []
+        
+    user_sets = []
+    user_posts = []
+    
+    #make set of unique threads: 
+    for user in cur_df['author'].unique():
+        user_list = cur_df[cur_df['author'] == user]['body'].tolist()
+        user_sub = ' '.join(user_list).split()
+        user_posts.append(user_sub)
+        user_set = set(' '.join(user_sub).split())
+        user_sets.append(user_set)
+    
+    #D^T setup: 
+    thread_sets = []
+    thread_posts = []
+    
+    #make set of unique threads: 
+    for thread in cur_df['parent_id'].unique():
+        thread_list = cur_df[cur_df['parent_id'] == thread]['body'].tolist()
+        thread_sub = ' '.join(thread_list).split()
+        thread_posts.append(thread_sub)
+        thread_set = set(' '.join(thread_sub).split())
+        thread_sets.append(thread_set)
+    
+     
+    #get SCBOW embeddings if the vocab has size > 0: 
+    embed_matrix, embed_vocab = getD_SCBOW(cur_df['tokenized'].tolist())
+
+    for word in words: 
+        freq = cur_vocab[word]
+        
+        if freq < threshold: 
+            #return nan for all other measurements
+            freq_dict[word].append((cur_start, np.nan))
+            rel_freq_dict[word].append((cur_start, np.nan))
+            rank_dict[word].append((cur_start, np.nan))
+            normed_rank_dict[word].append((cur_start, np.nan))
+            d_u_dict[word].append((cur_start, np.nan))
+            d_t_dict[word].append((cur_start, np.nan))
+            d_l_dict[word].append((cur_start, np.nan))
+            d_s_25_dict[word].append((cur_start, np.nan))
+            d_s_50_dict[word].append((cur_start, np.nan))
+            d_s_75_dict[word].append((cur_start, np.nan))
+            d_s_mean_dict[word].append((cur_start, np.nan))
+            
+            
+        else: 
+            #if the frequency is >= threshold, calculate all other measurements
+            freq_dict[word].append((cur_start, freq))
+            rel_freq_dict[word].append((cur_start, freq/n_words))
+            rank_dict[word].append((cur_start, ranks[word]))
+            normed_rank_dict[word].append((cur_start, ranks[word]/n_words))
+        
+            #d_u
+            D_U = newD_U(word, user_sets, cur_vocab, user_posts)
+            d_u_dict[word].append((cur_start, D_U))
+            
+            #c_t
+            D_T = newD_T(word, thread_sets, cur_vocab, thread_posts)
+            d_t_dict[word].append((cur_start, D_T))
+        
+            #d_l calculation: 
+            if word in cur_vocab.keys(): 
+                #a bit of a cheap hack, works under assumption that words in df are unique
+                #if time permits: index by word
+                D_L = dl_df[dl_df['word'] == word].iloc[0]['D_L']
+                d_l_dict[word].append((cur_start, D_L))
+            
+            #an extra check, just to be safe
+            else: 
+                d_l_dict[word].append((cur_start, np.nan))
+
+            #calculate d_s
+            try: 
+                index = embed_vocab.index(word)
+                d_s_25 = SemDensity(word, index, embed_matrix, 0.25)
+                d_s_50 = SemDensity(word, index, embed_matrix, 0.50)
+                d_s_75 = SemDensity(word, index, embed_matrix, 0.75)
+                d_s_mean = SemDensity(word, index, embed_matrix)
+
+
+            #if word isn't in vocab: 
+            except ValueError: 
+                d_s_25 = np.nan
+                d_s_50 = np.nan
+                d_s_75 = np.nan
+                d_s_mean = np.nan
+                
+            d_s_25_dict[word].append((cur_start, d_s_25))
+            d_s_50_dict[word].append((cur_start, d_s_50))
+            d_s_75_dict[word].append((cur_start, d_s_75))
+            d_s_mean_dict[word].append((cur_start, d_s_mean))
+
+
+    data_df['freq'] = data_df.apply(lambda x: x['freq']+ freq_dict[x['word']], axis=1)
+    data_df['rel_freq'] = data_df.apply(lambda x: x['rel_freq']+ rel_freq_dict[x['word']], axis=1)
+    data_df['rank'] = data_df.apply(lambda x: x['rank']+ rank_dict[x['word']], axis=1)
+    data_df['normed_rank'] = data_df.apply(lambda x: x['normed_rank']+ normed_rank_dict[x['word']], axis=1)
+    data_df['d_u'] = data_df.apply(lambda x: x['d_u']+ d_u_dict[x['word']], axis=1)
+    data_df['d_t'] = data_df.apply(lambda x: x['d_t']+ d_t_dict[x['word']], axis=1)
+    data_df['d_l'] = data_df.apply(lambda x: x['d_l']+ d_l_dict[x['word']], axis=1)  
+    data_df['d_s_25'] = data_df.apply(lambda x: x['d_s_25']+ d_s_25_dict[x['word']], axis=1) 
+    data_df['d_s_50'] = data_df.apply(lambda x: x['d_s_50']+ d_s_50_dict[x['word']], axis=1) 
+    data_df['d_s_75'] = data_df.apply(lambda x: x['d_s_75']+ d_s_75_dict[x['word']], axis=1) 
+    data_df['d_s_mean'] = data_df.apply(lambda x: x['d_s_mean']+ d_s_mean_dict[x['word']], axis=1) 
+    
+    print(data_df.head(20))
+    return data_df
+
+
+
 if __name__ == "__main__": 
+    #for timing: 
+    start_time = time.time()
+    
+    #create words + measurements df, intialized to empty lists
+    data_df = pd.read_csv('words.csv')  
+    my_measurements = ['freq', 'rel_freq', 'rank', 'normed_rank', 'd_u', 'd_t', 'd_l', 'd_s_25', 'd_s_50', 'd_s_75', 'd_s_mean']
+#    my_measurements = ['freq', 'rel_freq', 'rank', 'normed_rank', 'd_u', 'd_t', 'd_l']
+    for measurement in my_measurements: 
+        data_df[measurement] = data_df['word'].map(lambda x: [])
+    print(data_df.head())
+    words = data_df['word'].tolist()
+    
+    #unix timestamp for earliest df
+    cur_start = 1451606400
     offset = 2629743
-    start = 1451606400
-    end = 1459495629
-    
-    #read in data
-    
-    cur_start = start
+    end = 1485793059
+    threshold = 5
+  
     
     while cur_start < end: 
         cur_end = cur_start + offset
-        print(cur_start, cur_end)
-        reddit_df = GetData('data/', cur_start, cur_end, offset)
+        cur_df =  CleanData(GetData('data/', cur_start, cur_end, offset))
+        data_df = CalcMeasures(cur_df, data_df, words, 5, my_measurements)
+        
         cur_start = cur_end
+    
+    #filter out words that never hit the frequency threshold
+    data_df['no_values'] = data_df['freq'].map(lambda x: all(np.isnan(y[1]) for y in x))
+    print(data_df['no_values'].value_counts())
+    
+    data_df = data_df[data_df['no_values'] == False]
+    
+    data_df.to_csv('data_df.csv')
+    data_df.to_pickle('data_df.pkl')
+    
+    end_time = time.time()
+    print("Total time elapsed:", str(end_time-start_time))
 
-    
-    
-    
+#    #unix timestamp for earliest df
+#
+#    #read in data
 #    reddit_df = GetData('data/', 0, 1559214151, 1559214151)
-#    
-#    
 #    print("DataFrame shape:", reddit_df.shape)
-#    
+    
 #    data_df = pd.read_csv('words.csv')    
-#    cleaned = CleanData(reddit_df, pickled=True)
+#    cleaned = CleanData(reddit_df)
 #    print("Cleaned DataFrame shape:", cleaned.shape)    
 #
 #    #frequency
@@ -860,5 +1055,8 @@ if __name__ == "__main__":
 #    
 #    #d_s_lsa
 #    
-#    
+#    data_df.to_pickle('data_df.pkl')
 #    data_df.to_csv('data_df.csv')
+#    
+#    end_time = time.time()
+#    print("Time elapsed:", end_time - start_time)
