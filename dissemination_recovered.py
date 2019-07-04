@@ -795,7 +795,7 @@ def NormedRank(df, offset, words, threshold):
     
     return my_dict
 
-@profile
+#monster function that does everything
 def CalcMeasures(reddit_df, data_df, words, threshold, measurements): 
     #check that there are posts in the current subset
     if len(reddit_df.index) <= 0: 
@@ -949,7 +949,6 @@ if __name__ == "__main__":
     #create words + measurements df, intialized to empty lists
     data_df = pd.read_csv('words.csv')  
     my_measurements = ['freq', 'rel_freq', 'rank', 'normed_rank', 'd_u', 'd_t', 'd_l', 'd_s_25', 'd_s_50', 'd_s_75', 'd_s_mean']
-#    my_measurements = ['freq', 'rel_freq', 'rank', 'normed_rank', 'd_u', 'd_t', 'd_l']
     for measurement in my_measurements: 
         data_df[measurement] = data_df['word'].map(lambda x: [])
     print(data_df.head())
@@ -980,83 +979,3 @@ if __name__ == "__main__":
     
     end_time = time.time()
     print("Total time elapsed:", str(end_time-start_time))
-
-#    #unix timestamp for earliest df
-#
-#    #read in data
-#    reddit_df = GetData('data/', 0, 1559214151, 1559214151)
-#    print("DataFrame shape:", reddit_df.shape)
-    
-#    data_df = pd.read_csv('words.csv')    
-#    cleaned = CleanData(reddit_df)
-#    print("Cleaned DataFrame shape:", cleaned.shape)    
-#
-#    #frequency
-#    freq = Freq(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['freq'] = data_df['word'].map(lambda x: freq[x])
-#    print("Frequency completed")
-#    
-#    #filter out words that never hit the frequency threshold
-#    data_df['no_values'] = data_df['freq'].map(lambda x: all(np.isnan(y[1]) for y in x))
-#    print(data_df['no_values'].value_counts())
-#    
-#    data_df = data_df[data_df['no_values'] == False]
-#    print(data_df['source'].value_counts())
-#    
-#    #relative frequency
-#    rel_freq = RelFreq(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['rel_freq'] = data_df['word'].map(lambda x: rel_freq[x])
-#    print("Relative frequency completed")
-#    
-#    #rank
-#    rank = Rank(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['rank'] = data_df['word'].map(lambda x: rank[x])
-#    print("Rank completed")
-#    
-#    #normed rank
-#    normed_rank = NormedRank(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['normed_rank'] = data_df['word'].map(lambda x: normed_rank[x])
-#    print("Normed rank completed")
-#    
-#    #d_l
-#    d_l = D_LSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['d_l'] = data_df['word'].map(lambda x: d_l[x])
-#    print("D^L completed")
-#    
-#    #d_u
-#    d_u = D_USeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['d_u'] = data_df['word'].map(lambda x: d_u[x])
-#    print("D^U completed")
-#    
-#    #d_t
-#    d_t = D_TSeries(cleaned, 2629743, data_df['word'].tolist(), 5)
-#    data_df['d_t'] = data_df['word'].map(lambda x: d_t[x])
-#    print("D^T completed")
-#    
-#    #d_s_25
-#    d_s_25 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.25)
-#    data_df['d_s_25'] = data_df['word'].map(lambda x: d_s_25[x])
-#    print("D^S 0.25 completed")
-#    
-#    #d_s_50
-#    d_s_50 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.50)
-#    data_df['d_s_50'] = data_df['word'].map(lambda x: d_s_50[x])
-#    print("D^S 0.50 completed")
-#    
-#    #d_s_75
-#    d_s_75 = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), 0.75)
-#    data_df['d_s_75'] = data_df['word'].map(lambda x: d_s_75[x])
-#    print("D^S 0.75 completed")
-#    
-#    #d_s_mean
-#    d_s_mean = D_SemSeries(cleaned, 2629743, data_df['word'].tolist(), None)
-#    data_df['d_s_mean'] = data_df['word'].map(lambda x: d_s_mean[x])
-#    print("D^S mean completed")
-#    
-#    #d_s_lsa
-#    
-#    data_df.to_pickle('data_df.pkl')
-#    data_df.to_csv('data_df.csv')
-#    
-#    end_time = time.time()
-#    print("Time elapsed:", end_time - start_time)
