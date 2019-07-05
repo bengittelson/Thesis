@@ -43,10 +43,13 @@ def GetData(in_path, start, end, offset):
                 #special case for some reason, fix later
                 if subreddit == 'pple_': 
                     subreddit = 'apple_'
-                    
+
                 cur_file = str(directory) + '/' + subreddit + str(cur_start) + '_' + str(cur_end) + '.csv'
-                cur_df = pd.read_csv(cur_file, error_bad_lines=False, warn_bad_lines=True, engine='python')
-                df = df.append(cur_df)
+                try: 
+                    cur_df = pd.read_csv(cur_file, error_bad_lines=False, warn_bad_lines=True, engine='python')
+                    df = df.append(cur_df)
+                except FileNotFoundError: 
+                    print("%s not found" % cur_file)
                 
         cur_start = cur_end
         
@@ -818,6 +821,7 @@ def CalcMeasures(reddit_df, data_df, words, threshold, measurements):
     d_s_50_dict = dict()
     d_s_75_dict = dict()
     d_s_mean_dict = dict()
+    print("Made dictionaries")
     
     for word in words: 
         freq_dict[word] = []
@@ -831,7 +835,9 @@ def CalcMeasures(reddit_df, data_df, words, threshold, measurements):
         d_s_50_dict[word] = []
         d_s_75_dict[word] = []
         d_s_mean_dict[word] = []
-        
+    print("Initialized dictionaries") 
+    
+    
     user_sets = []
     user_posts = []
     
@@ -842,6 +848,8 @@ def CalcMeasures(reddit_df, data_df, words, threshold, measurements):
         user_posts.append(user_sub)
         user_set = set(' '.join(user_sub).split())
         user_sets.append(user_set)
+    
+    print("D^U setup completed") 
     
     #D^T setup: 
     thread_sets = []
@@ -855,11 +863,15 @@ def CalcMeasures(reddit_df, data_df, words, threshold, measurements):
         thread_set = set(' '.join(thread_sub).split())
         thread_sets.append(thread_set)
     
-     
+    print("D^T setup completed")
+    
     #get SCBOW embeddings if the vocab has size > 0: 
     embed_matrix, embed_vocab = getD_SCBOW(cur_df['tokenized'].tolist())
-
-    for word in words: 
+    print("D^S setup completed") 
+    
+    for i, word in enumerate(words): 
+        if i % 1000 == 0: 
+            print((i), '/', str(len(words)))
         freq = cur_vocab[word]
         
         if freq < threshold: 
@@ -925,6 +937,7 @@ def CalcMeasures(reddit_df, data_df, words, threshold, measurements):
             d_s_mean_dict[word].append((cur_start, d_s_mean))
 
 
+    print("Adding values to data_df")
     data_df['freq'] = data_df.apply(lambda x: x['freq']+ freq_dict[x['word']], axis=1)
     data_df['rel_freq'] = data_df.apply(lambda x: x['rel_freq']+ rel_freq_dict[x['word']], axis=1)
     data_df['rank'] = data_df.apply(lambda x: x['rank']+ rank_dict[x['word']], axis=1)
@@ -966,6 +979,9 @@ if __name__ == "__main__":
         cur_df =  CleanData(GetData('data/', cur_start, cur_end, offset))
         data_df = CalcMeasures(cur_df, data_df, words, 5, my_measurements)
         
+        #check for 
+        data_df.to_csv('data_df.csv')
+        data_df.to_pickle('data_df.pkl')
         cur_start = cur_end
     
     #filter out words that never hit the frequency threshold
