@@ -12,52 +12,6 @@ from pathlib import Path
 from functools import reduce
 
 #functions: utilities
-#
-#def GetData(in_path, start, end, offset): 
-#    df = pd.DataFrame()
-#    cur_start = start
-#    
-#    while cur_start < end: 
-#        cur_end = cur_start + offset
-#        print(cur_start, cur_end)
-#        cur_start = cur_end
-#        for filename in Path(in_path).glob('**/*.csv'):
-#            print(filename)
-#            #file_split = 
-#            cur_df = pd.read_csv(filename, warn_bad_lines=True)
-#            df = df.append(cur_df)
-#            
-#    return df
-
-
-#def GetData(in_path, start, end, offset): 
-#    df = pd.DataFrame()
-#    cur_start = start
-#    
-#    while cur_start < end: 
-#        cur_end = cur_start + offset
-#        print(cur_start, cur_end)
-#        for directory in Path(in_path).glob('*'):
-#            if not '.DS_Store' in str(directory): 
-#                #create data_offset and analysis_offset variables
-#                
-#                #iterate over 
-#                
-#                subreddit = str(directory).strip(in_path)
-#                #special case for some reason, fix later
-#                if subreddit == 'pple_': 
-#                    subreddit = 'apple_'
-#
-#                cur_file = str(directory) + '/' + subreddit + str(cur_start) + '_' + str(cur_end) + '.csv'
-#                try: 
-#                    cur_df = pd.read_csv(cur_file, error_bad_lines=False, warn_bad_lines=True, engine='python')
-#                    df = df.append(cur_df)
-#                except FileNotFoundError: 
-#                    print("%s not found" % cur_file)
-#                
-#        cur_start = cur_end
-#    return df
-
 def GetData(in_path, start, end, data_offset): 
     print(start, end)
     df = pd.DataFrame()
@@ -90,7 +44,7 @@ def CleanData(in_df, pickled=False):
     
     else: 
         #drop nans from the body or time category since they can't be used for later analysis
-        cleaned_df = in_df.copy()
+        cleaned_df = in_df
         cleaned_df['created_utc'] = pd.to_numeric(cleaned_df['created_utc'], errors='coerce', downcast='integer')
         cleaned_df = cleaned_df.dropna(subset=['body', 'created_utc'])
         
@@ -1004,18 +958,19 @@ if __name__ == "__main__":
     #unix timestamp for earliest df
     cur_start = 1451606400
     data_interval = 2629743
-    analysis_interval = 2629743 * 3
+    analysis_interval = 2629743 * 6
     end = 1483163316
     threshold = 5
   
     
     while cur_start < end: 
         cur_end = cur_start + analysis_interval
-        cur_df =  CleanData(GetData('data/', cur_start, cur_end, data_interval))
-        data_df = CalcMeasures(cur_df, data_df, words, 5, my_measurements)
-        
-        data_df.to_csv('data_df.csv')
-        data_df.to_pickle('data_df.pkl')
+        raw_df =  GetData('data/', cur_start, cur_end, data_interval)
+        if raw_df.shape[1] > 0:
+            cur_df = CleanData(raw_df) 
+            data_df = CalcMeasures(cur_df, data_df, words, 5, my_measurements)
+            data_df.to_csv('data_df.csv')
+            data_df.to_pickle('data_df.pkl')
         cur_start = cur_end
     
     #filter out words that never hit the frequency threshold
