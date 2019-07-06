@@ -1,5 +1,5 @@
 #imports
-import pickle, json, multiprocessing, time, random, enchant, nltk, math, os
+import pickle, json, multiprocessing, time, random, nltk, math, os, string
 import pandas as pd
 import statsmodels.formula.api as smf
 import numpy as np
@@ -30,29 +30,57 @@ from functools import reduce
 #    return df
 
 
-def GetData(in_path, start, end, offset): 
-    df = pd.DataFrame()
-    cur_start = start
-    
-    while cur_start < end: 
-        cur_end = cur_start + offset
-        print(cur_start, cur_end)
-        for directory in Path(in_path).glob('*'):
-            if not '.DS_Store' in str(directory): 
-                subreddit = str(directory).strip(in_path)
-                #special case for some reason, fix later
-                if subreddit == 'pple_': 
-                    subreddit = 'apple_'
+#def GetData(in_path, start, end, offset): 
+#    df = pd.DataFrame()
+#    cur_start = start
+#    
+#    while cur_start < end: 
+#        cur_end = cur_start + offset
+#        print(cur_start, cur_end)
+#        for directory in Path(in_path).glob('*'):
+#            if not '.DS_Store' in str(directory): 
+#                #create data_offset and analysis_offset variables
+#                
+#                #iterate over 
+#                
+#                subreddit = str(directory).strip(in_path)
+#                #special case for some reason, fix later
+#                if subreddit == 'pple_': 
+#                    subreddit = 'apple_'
+#
+#                cur_file = str(directory) + '/' + subreddit + str(cur_start) + '_' + str(cur_end) + '.csv'
+#                try: 
+#                    cur_df = pd.read_csv(cur_file, error_bad_lines=False, warn_bad_lines=True, engine='python')
+#                    df = df.append(cur_df)
+#                except FileNotFoundError: 
+#                    print("%s not found" % cur_file)
+#                
+#        cur_start = cur_end
+#    return df
 
-                cur_file = str(directory) + '/' + subreddit + str(cur_start) + '_' + str(cur_end) + '.csv'
+def GetData(in_path, start, end, data_offset): 
+    print(start, end)
+    df = pd.DataFrame()
+    
+    for directory in Path(in_path).glob('*'):
+        if not '.DS_Store' in str(directory):  
+            subreddit = str(directory).strip(in_path)
+            #special case for some reason, fix later
+            if subreddit == 'pple_': 
+                subreddit = 'apple_'
+            
+            data_start = start
+            while data_start < end: 
+                data_end = data_start + data_offset
+                cur_file = str(directory) + '/' + subreddit + str(data_start) + '_' + str(data_end) + '.csv'
                 try: 
                     cur_df = pd.read_csv(cur_file, error_bad_lines=False, warn_bad_lines=True, engine='python')
                     df = df.append(cur_df)
                 except FileNotFoundError: 
                     print("%s not found" % cur_file)
-                
-        cur_start = cur_end
-        
+                data_start = data_end
+    
+    print("DF shape:", df.shape)
     return df
 
 
@@ -93,7 +121,12 @@ def CleanData(in_df, pickled=False):
        
         #tokenize
         redditizer = tokenizer.RedditTokenizer(preserve_handles=False, preserve_case=False, preserve_url=False)
-        cleaned_df['body'] = cleaned_df['body'].map(lambda x: str(x))
+        
+#        redditizer = nltk.tokenize.casual.TweetTokenizer(strip_handles=True, reduce_len=True)
+        #text to lowercase
+        cleaned_df['body'] = cleaned_df['body'].map(lambda x: str(x).translate(str.maketrans('', '', string.punctuation)))
+#        cleaned_df['body'] = cleaned_df['body'].map(lambda x: str(x).lower().translate(str.maketrans('', '', string.punctuation)))
+
         cleaned_df['tokenized'] = cleaned_df['body'].map(lambda x: redditizer.tokenize(x))
     
         #put back together into one string
@@ -101,6 +134,7 @@ def CleanData(in_df, pickled=False):
         
         #lemmatize or stem later
         cleaned_df.to_pickle('cleaned_df.pkl')
+        print(cleaned_df['tokenized'].head())
     return cleaned_df
 
 
@@ -969,17 +1003,17 @@ if __name__ == "__main__":
     
     #unix timestamp for earliest df
     cur_start = 1451606400
-    offset = 2629743
-    end = 1485793059
+    data_interval = 2629743
+    analysis_interval = 2629743 * 3
+    end = 1483163316
     threshold = 5
   
     
     while cur_start < end: 
-        cur_end = cur_start + offset
-        cur_df =  CleanData(GetData('data/', cur_start, cur_end, offset))
+        cur_end = cur_start + analysis_interval
+        cur_df =  CleanData(GetData('data/', cur_start, cur_end, data_interval))
         data_df = CalcMeasures(cur_df, data_df, words, 5, my_measurements)
         
-        #check for 
         data_df.to_csv('data_df.csv')
         data_df.to_pickle('data_df.pkl')
         cur_start = cur_end
